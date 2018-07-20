@@ -1,20 +1,11 @@
 package com.cyril.speexnoisecancel;
 
-import android.Manifest;
+import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
-import android.os.Bundle;
-import android.os.Handler;
-import android.support.annotation.NonNull;
-import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.view.View;
-import android.widget.Button;
 import android.widget.Toast;
-
-import com.github.dfqin.grantor.PermissionListener;
-import com.github.dfqin.grantor.PermissionsUtil;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -24,124 +15,74 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener {
+/**
+ * @author : jinlongfeng
+ * @version : V
+ * @description:
+ * @time : 2018/7/20-08:39
+ */
+public class AudioRecordHelper {
 
-    private static final String TAG =  " AudioRecord";
-    Speex mSpeex;
+    private static final String TAG = "AudioRecordHelper";
 
-    Button startRecordBtn;
-    Button startRecordBtn1;
-    Button stopRecordBtn;
-    Button startPlayBtn;
-
-
-    private int audioSource = MediaRecorder.AudioSource.MIC;
+    //RawAudioName裸音频数据文件
+    private static final String RawAudioName = "/sdcard/ss/record_speex.raw";
+    //WaveAudioName可播放的音频文件
+    private static final String WaveAudioName = "/sdcard/ss/record_speex.wav";
     // 设置音频采样率，44100是目前的标准，但是某些设备仍然支持22050，16000，11025
     private static int sampleRateInHz = 44100;
     // 设置音频的录制的声道CHANNEL_IN_STEREO为双声道，CHANNEL_CONFIGURATION_MONO为单声道
     private static int channelConfig = AudioFormat.CHANNEL_IN_MONO;
     // 音频数据格式:PCM 16位每个样本。保证设备支持。PCM 8位每个样本。不一定能得到设备支持。
     private static int audioFormat = AudioFormat.ENCODING_PCM_16BIT;
+    boolean isRecording = false;
+    private int audioSource = MediaRecorder.AudioSource.MIC;
     // 缓冲区字节大小
     private int bufferSizeInBytes = 0;
-
-    boolean isRecording = false;
-
-
     private AudioRecord audioRecord;
 
-    UPlayer mPlayer;
-    //RawAudioName裸音频数据文件
-    private static final String RawAudioName = "/sdcard/ss/record_speex.raw";
-    //WaveAudioName可播放的音频文件
-    private static final String WaveAudioName = "/sdcard/ss/record_speex.wav";
-
-
-    boolean isDenoiseMode = false;
-
-
-    AudioRecordHelper mAudioRecordHelper;
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
-        mSpeex = new Speex();
-
-        startRecordBtn = (Button) findViewById(R.id.start_record);
-        startRecordBtn1 = (Button) findViewById(R.id.start_record1);
-
-        stopRecordBtn = (Button) findViewById(R.id.stop_record);
-        startPlayBtn = (Button) findViewById(R.id.start_play);
-
-        startRecordBtn.setOnClickListener(this);
-        startRecordBtn1.setOnClickListener(this);
-
-        stopRecordBtn.setOnClickListener(this);
-        startPlayBtn.setOnClickListener(this);
-
-        mPlayer = new UPlayer(WaveAudioName);
-        creatAudioRecord();
-
-        mAudioRecordHelper = new AudioRecordHelper(this);
-
+    public AudioRecordHelper(Context context) {
+        mContext = context;
     }
 
-    private void creatAudioRecord() {
-        // 获得缓冲区字节大小
-        bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRateInHz,
-                channelConfig, audioFormat);
-        mSpeex.CancelNoiseInit(bufferSizeInBytes,sampleRateInHz);
-        // 创建AudioRecord对象
-        audioRecord = new AudioRecord(audioSource, sampleRateInHz,
-                channelConfig, audioFormat, bufferSizeInBytes);
-    }
+    private Context mContext;
 
     private void startRecord() {
-        if(audioRecord == null){
+        if (audioRecord == null) {
             creatAudioRecord();
         }
 
         audioRecord.startRecording();
-        // 让录制状态为true  
+        // 让录制状态为true
         isRecording = true;
-        // 开启音频文件写入线程  
+        // 开启音频文件写入线程
         new Thread(new AudioRecordThread()).start();
+    }
+
+
+    public void startRecordTask(){
+        startRecord();
+    }
+
+    public  void stopRecordTask(){
+        stopRecord();
     }
 
     private void stopRecord() {
         isRecording = false;//停止文件写入
     }
 
-    private void close() {
-        mSpeex.CancelNoiseDestroy();
-        if (audioRecord != null) {
-            System.out.println("stopRecord");
-            audioRecord.stop();
-            audioRecord.release();//释放资源  
-            audioRecord = null;
-        }
+    private void creatAudioRecord() {
+        // 获得缓冲区字节大小
+        bufferSizeInBytes = AudioRecord.getMinBufferSize(sampleRateInHz,
+                channelConfig, audioFormat);
+        // 创建AudioRecord对象
+        audioRecord = new AudioRecord(audioSource, sampleRateInHz,
+                channelConfig, audioFormat, bufferSizeInBytes);
     }
-
-    class AudioRecordThread implements Runnable {
-        @Override
-        public void run() {
-            writeDateTOFile();//往文件中写入裸数据
-            close();
-            WriteWav(RawAudioName, WaveAudioName);//给裸数据加上头文件
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    Toast.makeText(MainActivity.this,"录制完成",Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-    }
-
 
     private void writeDateTOFile() {
-        // new一个byte数组用来存一些字节数据，大小为缓冲区大小  
+        // new一个byte数组用来存一些字节数据，大小为缓冲区大小
         byte[] audiodata = new byte[bufferSizeInBytes];
         FileOutputStream fos = null;
         int readsize = 0;
@@ -157,10 +98,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         while (isRecording == true) {
             readsize = audioRecord.read(audiodata, 0, bufferSizeInBytes);
 
-            if(isDenoiseMode) {
-                mSpeex.CancelNoisePreprocess(audiodata);
-            }
-
             if (AudioRecord.ERROR_INVALID_OPERATION != readsize) {
 
                 try {
@@ -171,13 +108,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
         }
         try {
-            fos.close();// 关闭写入流  
+            fos.close();// 关闭写入流
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void  WriteWav (final String rawFileName, final String wavFileName){
+    private void WriteWav(final String rawFileName, final String wavFileName) {
 
         new Thread(new Runnable() {
             @Override
@@ -312,104 +249,27 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         return header;
     }
 
-    @Override
-    protected void onDestroy() {
-        isRecording = false;
-        close();
-        mPlayer.stop();
-        super.onDestroy();
-    }
-
-
-    private void startPlay(){
-        mPlayer.start();
-    }
-
-
-    private void stopPlay(){
-        mPlayer.stop();
-    }
-    @Override
-    public void onClick(View v) {
-        switch (v.getId()) {
-            case R.id.start_record:
-
-
-
-
-
-
-                requestMicPhone();
-
-
-
-                break;
-            case R.id.start_record1:
-                if(!isRecording) {
-                    isDenoiseMode = true;
-                    startRecord();
-                }
-
-
-                break;
-            case R.id.stop_record:
-                stopRecord();
-                break;
-            case R.id.start_play:
-                startPlay();
-                break;
+    private void close() {
+        if (audioRecord != null) {
+            System.out.println("stopRecord");
+            audioRecord.stop();
+            audioRecord.release();//释放资源
+            audioRecord = null;
         }
     }
 
+    class AudioRecordThread implements Runnable {
+        @Override
+        public void run() {
+            writeDateTOFile();//往文件中写入裸数据
+            close();
+            WriteWav(RawAudioName, WaveAudioName);//给裸数据加上头文件
 
 
-    /**
-     * 有访问麦克风的权限
-     * SdCard 读取权限
-     */
-    private void requestMicPhone() {
-        if (PermissionsUtil.hasPermission(this,
-                Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
-            //有访问麦克风的权限
-//            startRecordTask();
-            startRecordTask1();
-        } else {
-            PermissionsUtil.requestPermission(this, new PermissionListener() {
-                @Override
-                public void permissionGranted(@NonNull String[] permissions) {
-                    //用户授予了访问麦克风的权限
-//                    startRecordTask();
-                    startRecordTask1();
-                }
+           // Toast.makeText(mContext, "录制完成", Toast.LENGTH_SHORT).show();
 
-                @Override
-                public void permissionDenied(@NonNull String[] permissions) {
-                    //用户拒绝了访问麦克风的申请
-                }
-            }, new String[]{Manifest.permission.RECORD_AUDIO,Manifest.permission.WRITE_EXTERNAL_STORAGE});
+            Log.d(TAG,"录制完成");
+
         }
-    }
-
-    private void startRecordTask1() {
-
-//        if(!isRecording) {
-//            isDenoiseMode = false;
-//            startRecord();
-//
-//            Log.d(TAG,"======= startRecord ====");
-//
-//        }
-
-        mAudioRecordHelper.startRecordTask();
-
-        new Handler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                mAudioRecordHelper.stopRecordTask();
-                Log.d(TAG,"======= stopRecord ====");
-            }
-        },5_000);
-
     }
 }
